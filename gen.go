@@ -12,7 +12,6 @@ import (
 	"strings"
 	"text/template"
 
-	log "github.com/liudanking/goutil/logutil"
 	"github.com/urfave/cli"
 )
 
@@ -86,13 +85,11 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
-		log.Warning("read [file:%s] failed:%v", file, err)
 		return fs, ss, err
 	}
 
 	fast, err := parser.ParseFile(fset, file, string(data), parser.ParseComments)
 	if err != nil {
-		log.Warning("parse [file:%s] failed:%v", file, err)
 		return fs, ss, err
 	}
 
@@ -162,6 +159,13 @@ func getTypeName(expr ast.Expr) string {
 	case *ast.StarExpr:
 		starType := getTypeName(t.X)
 		return "*" + starType
+	case *ast.SelectorExpr:
+		// 时间使用时间戳
+		selectorType := getTypeName(t.X)
+		if selectorType == "time" {
+			return "int64"
+		}
+		return selectorType
 	default:
 		return "unknown"
 	}

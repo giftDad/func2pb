@@ -1,9 +1,8 @@
 package main
 
 import (
+	"fmt"
 	"os"
-
-	log "github.com/liudanking/goutil/logutil"
 
 	"github.com/urfave/cli"
 )
@@ -28,7 +27,7 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Error(err.Error())
+		fmt.Println(err)
 		return
 	}
 }
