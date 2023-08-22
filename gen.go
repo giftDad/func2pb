@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -111,14 +112,23 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 					t.In = append(t.In, ppp)
 				}
 			}
-			for _, param := range fn.Type.Results.List {
-				for _, n := range param.Names {
-					if n.Name == "err" {
-						continue
-					}
-					ppp := p{Name: n.Name, Typ: getTypeName(param.Type)}
-					t.Out = append(t.Out, ppp)
+
+			for index, param := range fn.Type.Results.List {
+				ty := getTypeName(param.Type)
+				if ty == "error" {
+					continue
 				}
+				// 处理匿名返回值
+				if len(param.Names) == 0 {
+					ppp := p{Name: "res" + strconv.Itoa(index), Typ: ty}
+					t.Out = append(t.Out, ppp)
+				} else {
+					for _, n := range param.Names {
+						ppp := p{Name: n.Name, Typ: ty}
+						t.Out = append(t.Out, ppp)
+					}
+				}
+
 			}
 			fs = append(fs, t)
 		} else if genDecl, isGenDecl := decl.(*ast.GenDecl); isGenDecl {
@@ -151,14 +161,14 @@ func getTypeName(expr ast.Expr) string {
 		return t.Name
 	case *ast.ArrayType:
 		elemType := getTypeName(t.Elt)
-		return "[]" + elemType
+		return "repeated " + elemType
 	case *ast.MapType:
 		keyType := getTypeName(t.Key)
 		valueType := getTypeName(t.Value)
-		return "map[" + keyType + "]" + valueType
+		return "map<" + keyType + ", " + valueType + ">"
 	case *ast.StarExpr:
 		starType := getTypeName(t.X)
-		return "*" + starType
+		return starType
 	case *ast.SelectorExpr:
 		// 时间使用时间戳
 		selectorType := getTypeName(t.X)
@@ -177,8 +187,29 @@ func genPB(fs []TT, ss []SS, sn string) (data []byte, err error) {
 		"add": func(a, b int) int {
 			return a + b
 		},
-		"repeated": func(s string) string {
-			return strings.ReplaceAll(s, "[]", "repeated ")
+		"replace": func(s string) string {
+			switch s {
+			case "float32":
+				return "float"
+			case "float64":
+				return "double"
+			default:
+				return s
+			}
+
+		},
+		"rename": func(s string) string {
+			var words []string
+			// 找到所有在小写字母后面的大写字母
+			var offset int
+			for i := 1; i < len(s); i++ {
+				if s[i] >= 'A' && s[i] <= 'Z' && s[i-1] >= 'a' && s[i-1] <= 'z' {
+					words = append(words, strings.ToLower(s[offset:i]))
+					offset = i
+				}
+			}
+			words = append(words, strings.ToLower(s[offset:]))
+			return strings.Join(words, "_")
 
 		},
 		"trim": func(input string) string {
@@ -209,12 +240,12 @@ service {{ .Sn }} {
 
 {{ range .Funcs }}
 message {{ .Name }}Req {
-	{{ range $index, $element := .In }}{{ repeated .Typ }} {{ .Name }} = {{$index | add 1}};
+	{{ range $index, $element := .In }}{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};
 	{{ end }}
 }
 
 message {{ .Name }}Resp {
-	{{ range .Out }}{{ repeated .Typ }} {{ .Name }} = 1;
+	{{ range $index, $element := .Out }}{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};
 	{{ end }}
 }
 {{ end }}
@@ -223,7 +254,7 @@ message {{ .Name }}Resp {
 // {{ trim .Comment }}
 message {{ .Name }} {
 	{{ range $index, $element := .Field }}// {{ trim .Comment }}
-	{{ repeated .Typ }} {{ .Name }} = {{$index | add 1}};
+	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};
 	{{ end }}
 }
 {{ end }}
