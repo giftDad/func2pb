@@ -245,6 +245,12 @@ message {{ .Name }}Req {
 }
 
 message {{ .Name }}Resp {
+	int32 code = 1;
+	string msg = 2;
+	{{ .Name }}Data data = 3;
+}
+
+message {{ .Name }}Data {
 	{{ range $index, $element := .Out }}{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};
 	{{ end }}
 }
