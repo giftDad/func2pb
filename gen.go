@@ -112,6 +112,7 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 			t := TT{Name: fn.Name.Name, Comment: fn.Doc.Text()}
 
 			for _, param := range fn.Type.Params.List {
+				addPackageStruct(param.Type, fast)
 				for _, n := range param.Names {
 					if n.Name == "ctx" {
 						continue
@@ -123,6 +124,7 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 			}
 
 			for index, param := range fn.Type.Results.List {
+				addPackageStruct(param.Type, fast)
 				ty := getTypeName(param.Type)
 				if ty == "error" {
 					continue
@@ -140,31 +142,49 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 
 			}
 			fs = append(fs, t)
-		} else if genDecl, isGenDecl := decl.(*ast.GenDecl); isGenDecl {
-			if fuc != "" {
-				continue
+		}
+
+		for {
+			if len(ps) == 0 {
+				break
 			}
 
-			for _, spec := range genDecl.Specs {
-				if typeSpec, isTypeSpec := spec.(*ast.TypeSpec); isTypeSpec {
-					s := SS{Name: typeSpec.Name.String(), Comment: genDecl.Doc.Text()}
-					if structType, isStruct := typeSpec.Type.(*ast.StructType); isStruct {
-						for _, field := range structType.Fields.List {
-							for _, name := range field.Names {
-								s.Field = append(s.Field, p{
-									Name:    name.Name,
-									Typ:     getTypeName(field.Type),
-									Comment: field.Comment.Text(),
-								})
+		Exit:
+			for _, decl := range fast.Decls {
+				if genDecl, isGenDecl := decl.(*ast.GenDecl); isGenDecl {
+					for _, spec := range genDecl.Specs {
+						if typeSpec, isTypeSpec := spec.(*ast.TypeSpec); isTypeSpec {
+							// 递归寻找struct
+							if typeSpec.Name.String() != ps[0] {
+								continue
+							} else {
+								ps = ps[1:]
+								createdps[typeSpec.Name.String()] = true
 							}
+
+							s := SS{Name: typeSpec.Name.String(), Comment: genDecl.Doc.Text()}
+							if structType, isStruct := typeSpec.Type.(*ast.StructType); isStruct {
+								for _, field := range structType.Fields.List {
+									addPackageStruct(field.Type, fast)
+									for _, name := range field.Names {
+										s.Field = append(s.Field, p{
+											Name:    name.Name,
+											Typ:     getTypeName(field.Type),
+											Comment: field.Comment.Text(),
+										})
+									}
+								}
+							}
+							ss = append(ss, s)
+							break Exit
 						}
 					}
-					ss = append(ss, s)
 				}
+
 			}
+
 		}
 	}
-
 	return
 }
 
@@ -191,6 +211,49 @@ func getTypeName(expr ast.Expr) string {
 		return selectorType
 	default:
 		return "unknown"
+	}
+}
+
+func IsS(expr ast.Expr, name string) bool {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name == name
+	case *ast.ArrayType:
+		elemType := getTypeName(t.Elt)
+		return elemType == name
+	case *ast.MapType:
+		keyType := getTypeName(t.Key)
+		valueType := getTypeName(t.Value)
+		return keyType == name || valueType == name
+	case *ast.StarExpr:
+		starType := getTypeName(t.X)
+		return starType == name
+	case *ast.SelectorExpr:
+		// 时间使用时间戳
+		selectorType := getTypeName(t.X)
+		if selectorType == "time" {
+			return false
+		}
+		return selectorType == name
+	default:
+		return false
+	}
+}
+
+var ps []string
+var createdps = make(map[string]bool)
+
+func addPackageStruct(expr ast.Expr, node *ast.File) {
+	for _, decl := range node.Decls {
+		if genDecl, isGenDecl := decl.(*ast.GenDecl); isGenDecl {
+			for _, spec := range genDecl.Specs {
+				if typeSpec, isTypeSpec := spec.(*ast.TypeSpec); isTypeSpec {
+					if IsS(expr, typeSpec.Name.Name) && !createdps[typeSpec.Name.Name] {
+						ps = append(ps, typeSpec.Name.Name)
+					}
+				}
+			}
+		}
 	}
 }
 
