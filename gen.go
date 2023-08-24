@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -43,10 +43,9 @@ type p struct {
 
 func gen(c *cli.Context) error {
 	out := c.String("out")
-	if out == "" {
-		return errors.New("output file is empty")
-	}
-	sn := strings.TrimSuffix(filepath.Base(out), filepath.Ext(out))
+	file := c.String("file")
+
+	sn := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
 	sn = strings.ToUpper(string(sn[0])) + strings.ToLower(sn[1:])
 
 	// 获取函数入参 出参
@@ -64,6 +63,11 @@ func gen(c *cli.Context) error {
 }
 
 func doOut(path string, content []byte) error {
+	if path == "" {
+		fmt.Println(string(content))
+		return nil
+	}
+
 	// 创建文件
 	file, err := os.Create(path)
 	if err != nil {
@@ -78,6 +82,7 @@ func doOut(path string, content []byte) error {
 
 func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 	file := c.String("file")
+	fuc := c.String("function")
 	if file == "" {
 		file, _ = os.Getwd()
 	}
@@ -97,6 +102,10 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 	for _, decl := range fast.Decls {
 		if fn, isFunc := decl.(*ast.FuncDecl); isFunc {
 			if !ast.IsExported(fn.Name.Name) {
+				continue
+			}
+
+			if fuc != "" && fn.Name.Name != fuc {
 				continue
 			}
 
@@ -132,6 +141,10 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 			}
 			fs = append(fs, t)
 		} else if genDecl, isGenDecl := decl.(*ast.GenDecl); isGenDecl {
+			if fuc != "" {
+				continue
+			}
+
 			for _, spec := range genDecl.Specs {
 				if typeSpec, isTypeSpec := spec.(*ast.TypeSpec); isTypeSpec {
 					s := SS{Name: typeSpec.Name.String(), Comment: genDecl.Doc.Text()}
@@ -212,9 +225,15 @@ func genPB(fs []TT, ss []SS, sn string) (data []byte, err error) {
 			return strings.Join(words, "_")
 
 		},
-		"trim": func(input string) string {
-			return strings.ReplaceAll(input, "\n", "")
-
+		"comment": func(input string) string {
+			if input != "" {
+				return "// " + input
+			}
+			return input
+		},
+		"commentnotempty": func(input string) bool {
+			input = strings.ReplaceAll(input, "\n", "")
+			return input != ""
 		},
 	})
 
@@ -232,16 +251,13 @@ const tmplPB = `syntax = "proto3";
 // TODO fill it
 package xxx;
 
-service {{ .Sn }} {
-	{{ range .Funcs }}// {{ trim .Comment }}
-	rpc {{ .Name }}({{ .Name }}Req) returns ({{ .Name }}Resp);
-	{{ end }}
+service {{ .Sn }} { {{ range .Funcs }}
+{{ if commentnotempty .Comment }}	{{ comment .Comment }}{{ end }}	rpc {{ .Name }}({{ .Name }}Req) returns ({{ .Name }}Resp);{{ end }}
 }
 
 {{ range .Funcs }}
-message {{ .Name }}Req {
-	{{ range $index, $element := .In }}{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};
-	{{ end }}
+message {{ .Name }}Req { {{ range $index, $element := .In }}
+	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};{{ end }}
 }
 
 message {{ .Name }}Resp {
@@ -250,18 +266,14 @@ message {{ .Name }}Resp {
 	{{ .Name }}Data data = 3;
 }
 
-message {{ .Name }}Data {
-	{{ range $index, $element := .Out }}{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};
-	{{ end }}
+message {{ .Name }}Data { {{ range $index, $element := .Out }}
+	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};{{ end }}
 }
 {{ end }}
 
 {{ range .Structs }}
-// {{ trim .Comment }}
-message {{ .Name }} {
-	{{ range $index, $element := .Field }}// {{ trim .Comment }}
-	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};
-	{{ end }}
+{{ if commentnotempty .Comment }}{{ comment .Comment }}{{ end }}message {{ .Name }} { {{ range $index, $element := .Field }}
+{{ if commentnotempty .Comment }}	{{ comment .Comment }}{{ end }}	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};{{ end }}
 }
 {{ end }}
 `

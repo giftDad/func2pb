@@ -21,7 +21,11 @@ func main() {
 		},
 		&cli.StringFlag{
 			Name:  "out",
-			Usage: "output file",
+			Usage: "output file,default : stdout",
+		},
+		&cli.StringFlag{
+			Name:  "function",
+			Usage: "only function",
 		},
 	}
 
