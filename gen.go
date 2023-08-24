@@ -290,7 +290,7 @@ func genPB(fs []TT, ss []SS, sn string) (data []byte, err error) {
 		},
 		"comment": func(input string) string {
 			if input != "" {
-				return "// " + input
+				return "// " + strings.ReplaceAll(input, "\n", "") + "\n"
 			}
 			return input
 		},
