@@ -16,8 +16,9 @@ func main() {
 	app.Action = gen
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
-			Name:  "file",
-			Usage: "source file or dir, default: current dir",
+			Name:     "file",
+			Usage:    "source file",
+			Required: true,
 		},
 		&cli.StringFlag{
 			Name:  "out",
@@ -25,7 +26,7 @@ func main() {
 		},
 		&cli.StringFlag{
 			Name:  "function",
-			Usage: "only function",
+			Usage: "only function default : total function in file",
 		},
 	}
 
