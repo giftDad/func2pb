@@ -43,6 +43,7 @@ type GenField struct {
 	Name    string
 	Typ     string
 	Comment string
+	TrueTyp int
 }
 
 func gen(c *cli.Context) error {
@@ -56,6 +57,15 @@ func gen(c *cli.Context) error {
 	r, err := genPB(f)
 	if err != nil {
 		return err
+	}
+
+	// 生成s2pb
+	if c.Bool("vv") {
+		s, err := genS2PB(f)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(s))
 	}
 
 	// 输出
@@ -158,7 +168,6 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 								continue
 							} else {
 								ps = ps[1:]
-								createdps[typeSpec.Name.String()] = true
 							}
 
 							s := GenStruct{Name: typeSpec.Name.String(), Comment: genDecl.Doc.Text()}
@@ -169,6 +178,7 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 										s.Field = append(s.Field, GenField{
 											Name:    name.Name,
 											Typ:     getTypeName(field.Type),
+											TrueTyp: getTypeEnum(field.Type),
 											Comment: field.Comment.Text(),
 										})
 									}
@@ -214,6 +224,28 @@ func getTypeName(expr ast.Expr) string {
 	}
 }
 
+// getTypeEnum 获取特殊类型 time - 1 /包内struct - 2
+func getTypeEnum(expr ast.Expr) int {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		// 假设首字母大写的类型为结构体
+		if strings.ToUpper(t.Name[:1]) == t.Name[:1] {
+			return 2
+		}
+		return 0
+	case *ast.StarExpr:
+		return getTypeEnum(t.X)
+	case *ast.SelectorExpr:
+		selectorType := getTypeName(t.X)
+		if selectorType == "time" {
+			return 1
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
 // isSame 是否是同一个结构体
 func isSame(expr ast.Expr, name string) bool {
 	switch t := expr.(type) {
@@ -252,11 +284,62 @@ func addPackageStruct(expr ast.Expr, node *ast.File) {
 				if typeSpec, isTypeSpec := spec.(*ast.TypeSpec); isTypeSpec {
 					if isSame(expr, typeSpec.Name.Name) && !createdps[typeSpec.Name.Name] {
 						ps = append(ps, typeSpec.Name.Name)
+						createdps[typeSpec.Name.Name] = true
 					}
 				}
 			}
 		}
 	}
+}
+func toCamelCase(s string) string {
+	var bs []byte
+	// 找到所有在小写字母后面的大写字母
+	var offset int
+	for i := 1; i < len(s); i++ {
+		if s[i] >= 'A' && s[i] <= 'Z' && s[i-1] >= 'a' && s[i-1] <= 'z' {
+			w := []byte(s[offset:i])
+			bs = append(bs, bytes.ToUpper([]byte{w[0]})...)
+			bs = append(bs, bytes.ToLower(w[1:])...)
+			offset = i
+		}
+	}
+	bs = append(bs, bytes.ToUpper([]byte{s[offset]})...)
+	bs = append(bs, bytes.ToLower([]byte(s[offset+1:]))...)
+	return string(bs)
+}
+
+func genS2PB(f GenFile) (data []byte, err error) {
+	buf := &bytes.Buffer{}
+	tpl := template.New("rule").Funcs(template.FuncMap{
+		"tolower": func(s string) string {
+			return strings.ToLower(s)
+		},
+		"marconv": func(s string, t int) string {
+			if t == 1 {
+				return "s." + s + ".Unix()"
+			} else if t == 2 {
+				return "pb2s" + s + "(s." + s + ")"
+			}
+			return "s." + s
+		},
+		"unmarconv": func(s string, t int) string {
+			if t == 1 {
+				return "time.Unix(s." + toCamelCase(s) + ", 0)"
+			} else if t == 2 {
+				return "s2pb" + toCamelCase(s) + "(s." + toCamelCase(s) + ")"
+			}
+			return "s." + toCamelCase(s)
+		},
+		"toCamelCase": toCamelCase,
+	})
+
+	template.Must(tpl.Parse(tmplS2PB))
+
+	if err := tpl.Execute(buf, f); err != nil {
+		panic(err)
+	}
+
+	return buf.Bytes(), nil
 }
 
 func genPB(f GenFile) (data []byte, err error) {
@@ -271,6 +354,8 @@ func genPB(f GenFile) (data []byte, err error) {
 				return "float"
 			case "float64":
 				return "double"
+			case "int":
+				return "int64"
 			default:
 				return s
 			}
@@ -337,6 +422,22 @@ message {{ .Name }}Data { {{ range $index, $element := .Out }}
 {{ range .Structs }}
 {{ if commentnotempty .Comment }}{{ comment .Comment }}{{ end }}message {{ .Name }} { {{ range $index, $element := .Field }}
 {{ if commentnotempty .Comment }}	{{ comment .Comment }}{{ end }}	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};{{ end }}
+}
+{{ end }}
+`
+
+const tmplS2PB = `
+{{ range .Structs }}
+func pb2s{{ .Name }}(s {{ tolower $.Sn }}.{{ .Name }}) *{{ .Name }} {
+	return &{{ .Name }}{ {{ range .Field }}
+		{{ toCamelCase .Name }} : {{ marconv .Name .TrueTyp }},{{ end }}
+	}
+}
+
+func s2pb{{ .Name }}(s *{{ .Name }}) {{ tolower $.Sn }}.{{ .Name }}{
+	return {{ tolower $.Sn }}. {{ .Name }}{ {{ range .Field }}
+		{{ .Name }} : {{ unmarconv .Name .TrueTyp }},{{ end }}
+	}
 }
 {{ end }}
 `

@@ -28,6 +28,10 @@ func main() {
 			Name:  "function",
 			Usage: "only function default : total function in file",
 		},
+		&cli.BoolFlag{
+			Name:  "vv",
+			Usage: "stdout struct2pb",
+		},
 	}
 
 	err := app.Run(os.Args)
