@@ -17,7 +17,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:     "file",
-			Usage:    "source file",
+			Usage:    "source file,required",
 			Required: true,
 		},
 		&cli.StringFlag{

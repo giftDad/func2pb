@@ -16,53 +16,54 @@ import (
 	"github.com/urfave/cli"
 )
 
-type FF struct {
-	Funcs   []TT
-	Structs []SS
+// GenFile 文件信息
+type GenFile struct {
+	Funcs   []GenFunc
+	Structs []GenStruct
 	Sn      string
 }
 
-type TT struct {
+// GenFunc 函数信息
+type GenFunc struct {
 	Name    string
 	Comment string
-	In      []p
-	Out     []p
+	In      []GenField
+	Out     []GenField
 }
 
-type SS struct {
+// GenStruct 结构体信息
+type GenStruct struct {
 	Name    string
 	Comment string
-	Field   []p
+	Field   []GenField
 }
 
-type p struct {
+// GenField 字段信息
+type GenField struct {
 	Name    string
 	Typ     string
 	Comment string
 }
 
 func gen(c *cli.Context) error {
-	out := c.String("out")
-	file := c.String("file")
-
-	sn := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
-	sn = strings.ToUpper(string(sn[0])) + strings.ToLower(sn[1:])
-
-	// 获取函数入参 出参
-	fs, ss, e := getAST(c)
+	// 获取文件Ast解析信息
+	f, e := getAST(c)
 	if e != nil {
 		return e
 	}
 
-	r, err := genPB(fs, ss, sn)
+	// 生成PB
+	r, err := genPB(f)
 	if err != nil {
 		return err
 	}
 
-	return doOut(out, r)
+	// 输出
+	return doOut(c.String("out"), r)
 }
 
 func doOut(path string, content []byte) error {
+	// out 未指定输出到stdout
 	if path == "" {
 		fmt.Println(string(content))
 		return nil
@@ -80,25 +81,27 @@ func doOut(path string, content []byte) error {
 	return err
 }
 
-func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
+func getAST(c *cli.Context) (f GenFile, err error) {
 	file := c.String("file")
-	fuc := c.String("function")
 	if file == "" {
 		file, _ = os.Getwd()
 	}
-
-	fset := token.NewFileSet()
+	// 服务名
+	f.Sn = strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	f.Sn = strings.ToUpper(string(f.Sn[0])) + strings.ToLower(f.Sn[1:])
 
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
-		return fs, ss, err
+		return f, err
 	}
 
+	fset := token.NewFileSet()
 	fast, err := parser.ParseFile(fset, file, string(data), parser.ParseComments)
 	if err != nil {
-		return fs, ss, err
+		return f, err
 	}
 
+	fuc := c.String("function")
 	for _, decl := range fast.Decls {
 		if fn, isFunc := decl.(*ast.FuncDecl); isFunc {
 			if !ast.IsExported(fn.Name.Name) {
@@ -109,7 +112,7 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 				continue
 			}
 
-			t := TT{Name: fn.Name.Name, Comment: fn.Doc.Text()}
+			t := GenFunc{Name: fn.Name.Name, Comment: fn.Doc.Text()}
 
 			for _, param := range fn.Type.Params.List {
 				addPackageStruct(param.Type, fast)
@@ -118,7 +121,7 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 						continue
 					}
 
-					ppp := p{Name: n.Name, Typ: getTypeName(param.Type)}
+					ppp := GenField{Name: n.Name, Typ: getTypeName(param.Type)}
 					t.In = append(t.In, ppp)
 				}
 			}
@@ -131,24 +134,20 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 				}
 				// 处理匿名返回值
 				if len(param.Names) == 0 {
-					ppp := p{Name: "res" + strconv.Itoa(index), Typ: ty}
+					ppp := GenField{Name: "res" + strconv.Itoa(index), Typ: ty}
 					t.Out = append(t.Out, ppp)
 				} else {
 					for _, n := range param.Names {
-						ppp := p{Name: n.Name, Typ: ty}
+						ppp := GenField{Name: n.Name, Typ: ty}
 						t.Out = append(t.Out, ppp)
 					}
 				}
 
 			}
-			fs = append(fs, t)
+			f.Funcs = append(f.Funcs, t)
 		}
 
-		for {
-			if len(ps) == 0 {
-				break
-			}
-
+		for len(ps) != 0 {
 		Exit:
 			for _, decl := range fast.Decls {
 				if genDecl, isGenDecl := decl.(*ast.GenDecl); isGenDecl {
@@ -162,12 +161,12 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 								createdps[typeSpec.Name.String()] = true
 							}
 
-							s := SS{Name: typeSpec.Name.String(), Comment: genDecl.Doc.Text()}
+							s := GenStruct{Name: typeSpec.Name.String(), Comment: genDecl.Doc.Text()}
 							if structType, isStruct := typeSpec.Type.(*ast.StructType); isStruct {
 								for _, field := range structType.Fields.List {
 									addPackageStruct(field.Type, fast)
 									for _, name := range field.Names {
-										s.Field = append(s.Field, p{
+										s.Field = append(s.Field, GenField{
 											Name:    name.Name,
 											Typ:     getTypeName(field.Type),
 											Comment: field.Comment.Text(),
@@ -175,7 +174,7 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 									}
 								}
 							}
-							ss = append(ss, s)
+							f.Structs = append(f.Structs, s)
 							break Exit
 						}
 					}
@@ -188,6 +187,7 @@ func getAST(c *cli.Context) (fs []TT, ss []SS, err error) {
 	return
 }
 
+// getTypeName 获取输出pb的name
 func getTypeName(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -214,7 +214,8 @@ func getTypeName(expr ast.Expr) string {
 	}
 }
 
-func IsS(expr ast.Expr, name string) bool {
+// isSame 是否是同一个结构体
+func isSame(expr ast.Expr, name string) bool {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		return t.Name == name
@@ -243,12 +244,13 @@ func IsS(expr ast.Expr, name string) bool {
 var ps []string
 var createdps = make(map[string]bool)
 
+// addPackageStruct 判断是否是包内结构体并加入队列
 func addPackageStruct(expr ast.Expr, node *ast.File) {
 	for _, decl := range node.Decls {
 		if genDecl, isGenDecl := decl.(*ast.GenDecl); isGenDecl {
 			for _, spec := range genDecl.Specs {
 				if typeSpec, isTypeSpec := spec.(*ast.TypeSpec); isTypeSpec {
-					if IsS(expr, typeSpec.Name.Name) && !createdps[typeSpec.Name.Name] {
+					if isSame(expr, typeSpec.Name.Name) && !createdps[typeSpec.Name.Name] {
 						ps = append(ps, typeSpec.Name.Name)
 					}
 				}
@@ -257,7 +259,7 @@ func addPackageStruct(expr ast.Expr, node *ast.File) {
 	}
 }
 
-func genPB(fs []TT, ss []SS, sn string) (data []byte, err error) {
+func genPB(f GenFile) (data []byte, err error) {
 	buf := &bytes.Buffer{}
 	tpl := template.New("rule").Funcs(template.FuncMap{
 		"add": func(a, b int) int {
@@ -272,7 +274,6 @@ func genPB(fs []TT, ss []SS, sn string) (data []byte, err error) {
 			default:
 				return s
 			}
-
 		},
 		"rename": func(s string) string {
 			var words []string
@@ -286,7 +287,6 @@ func genPB(fs []TT, ss []SS, sn string) (data []byte, err error) {
 			}
 			words = append(words, strings.ToLower(s[offset:]))
 			return strings.Join(words, "_")
-
 		},
 		"comment": func(input string) string {
 			if input != "" {
@@ -302,7 +302,7 @@ func genPB(fs []TT, ss []SS, sn string) (data []byte, err error) {
 
 	template.Must(tpl.Parse(tmplPB))
 
-	if err := tpl.Execute(buf, FF{fs, ss, sn}); err != nil {
+	if err := tpl.Execute(buf, f); err != nil {
 		panic(err)
 	}
 
