@@ -410,7 +410,7 @@ service {{ .Sn }} { {{ range .Funcs }}
 }
 
 {{ range .Funcs }}
-message {{ .Name }}Req { {{ range $index, $element := .In }}
+message {{ .Name }}Req {{ "{" }}{{ range $index, $element := .In }}
 	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};{{ end }}
 }
 
@@ -420,7 +420,7 @@ message {{ .Name }}Resp {
 	{{ .Name }}Data data = 3;
 }
 
-message {{ .Name }}Data { {{ range $index, $element := .Out }}
+message {{ .Name }}Data {{ "{" }}{{ range $index, $element := .Out }}
 	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};{{ end }}
 }
 {{ end }}
