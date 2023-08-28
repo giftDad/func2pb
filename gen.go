@@ -66,10 +66,12 @@ func gen(c *cli.Context) error {
 			return err
 		}
 		fmt.Println(string(s))
-	}
+	} else {
+		// 输出
+		return doOut(c.String("out"), r)
 
-	// 输出
-	return doOut(c.String("out"), r)
+	}
+	return nil
 }
 
 func doOut(path string, content []byte) error {
@@ -175,6 +177,10 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 								for _, field := range structType.Fields.List {
 									addPackageStruct(field.Type, fast)
 									for _, name := range field.Names {
+										if !ast.IsExported(name.Name) {
+											continue
+										}
+
 										s.Field = append(s.Field, GenField{
 											Name:    name.Name,
 											Typ:     getTypeName(field.Type),
@@ -428,13 +434,13 @@ message {{ .Name }}Data { {{ range $index, $element := .Out }}
 
 const tmplS2PB = `
 {{ range .Structs }}
-func pb2s{{ .Name }}(s {{ tolower $.Sn }}.{{ .Name }}) *{{ .Name }} {
+func s2pb{{ .Name }}(s {{ tolower $.Sn }}.{{ .Name }}) *{{ .Name }} {
 	return &{{ .Name }}{ {{ range .Field }}
 		{{ toCamelCase .Name }} : {{ marconv .Name .TrueTyp }},{{ end }}
 	}
 }
 
-func s2pb{{ .Name }}(s *{{ .Name }}) {{ tolower $.Sn }}.{{ .Name }}{
+func pb2s{{ .Name }}(s *{{ .Name }}) {{ tolower $.Sn }}.{{ .Name }}{
 	return {{ tolower $.Sn }}. {{ .Name }}{ {{ range .Field }}
 		{{ .Name }} : {{ unmarconv .Name .TrueTyp }},{{ end }}
 	}
