@@ -179,17 +179,28 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 							if structType, isStruct := typeSpec.Type.(*ast.StructType); isStruct {
 								for _, field := range structType.Fields.List {
 									addPackageStruct(field.Type, fast)
-									for _, name := range field.Names {
-										if !ast.IsExported(name.Name) {
-											continue
-										}
 
+									if len(field.Names) == 0 {
 										s.Field = append(s.Field, GenField{
-											Name:    name.Name,
+											Name:    getTypeName(field.Type),
 											Typ:     getTypeName(field.Type),
 											TrueTyp: getTypeEnum(field.Type),
 											Comment: field.Comment.Text(),
 										})
+									} else {
+										for _, name := range field.Names {
+											if !ast.IsExported(name.Name) {
+												continue
+											}
+
+											s.Field = append(s.Field, GenField{
+												Name:    name.Name,
+												Typ:     getTypeName(field.Type),
+												TrueTyp: getTypeEnum(field.Type),
+												Comment: field.Comment.Text(),
+											})
+										}
+
 									}
 								}
 							}
