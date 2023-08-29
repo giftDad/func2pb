@@ -244,10 +244,11 @@ func getTypeName(expr ast.Expr) string {
 	case *ast.SelectorExpr:
 		// 时间使用时间戳
 		selectorType := getTypeName(t.X)
-		if selectorType == "time" {
+		n := selectorType + t.Sel.Name
+		if n == "timeTime" {
 			return "int64"
 		}
-		return selectorType
+		return n
 	default:
 		return "unknown"
 	}
