@@ -2,9 +2,15 @@
 - file 目标Go文件 必需
 - out 目的输出proto文件 默认为stdout
 - function 目标Go文件中指定函数名 默认为整个file的函数
+- struct 目标Go文件中指定结构体名 默认为整个file依赖的结构体
 - vv 输出struct<=>pb的转化函数到stdout，带上后`-out`无效
 
 根据指定的Go文件，为其每一个导出函数生成pb方法，同时生成依赖的包内struct的pb message
+Notice:
+
+- 包外的结构体无法扫描生成,如需使用可以指定`-struct`输出到stdout后复制 `func2pb -file xxx.go -struct ABC` 
+- proto不支持类型需要手动处理，比如`二维数组`or`Map的value为数组`
+
 ```bash
 # 安装
 go install github.com/giftDad/func2pb@latest
