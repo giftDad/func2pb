@@ -126,35 +126,38 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 
 			t := GenFunc{Name: fn.Name.Name, Comment: fn.Doc.Text()}
 
-			for _, param := range fn.Type.Params.List {
-				addPackageStruct(param.Type, fast)
-				for _, n := range param.Names {
-					if n.Name == "ctx" {
-						continue
-					}
+			if fn.Type.Params != nil {
+				for _, param := range fn.Type.Params.List {
+					addPackageStruct(param.Type, fast)
+					for _, n := range param.Names {
+						if n.Name == "ctx" {
+							continue
+						}
 
-					ppp := GenField{Name: n.Name, Typ: getTypeName(param.Type)}
-					t.In = append(t.In, ppp)
+						ppp := GenField{Name: n.Name, Typ: getTypeName(param.Type)}
+						t.In = append(t.In, ppp)
+					}
 				}
 			}
 
-			for index, param := range fn.Type.Results.List {
-				addPackageStruct(param.Type, fast)
-				ty := getTypeName(param.Type)
-				if ty == "error" {
-					continue
-				}
-				// 处理匿名返回值
-				if len(param.Names) == 0 {
-					ppp := GenField{Name: "res" + strconv.Itoa(index), Typ: ty}
-					t.Out = append(t.Out, ppp)
-				} else {
-					for _, n := range param.Names {
-						ppp := GenField{Name: n.Name, Typ: ty}
+			if fn.Type.Results != nil {
+				for index, param := range fn.Type.Results.List {
+					addPackageStruct(param.Type, fast)
+					ty := getTypeName(param.Type)
+					if ty == "error" {
+						continue
+					}
+					// 处理匿名返回值
+					if len(param.Names) == 0 {
+						ppp := GenField{Name: "res" + strconv.Itoa(index), Typ: ty}
 						t.Out = append(t.Out, ppp)
+					} else {
+						for _, n := range param.Names {
+							ppp := GenField{Name: n.Name, Typ: ty}
+							t.Out = append(t.Out, ppp)
+						}
 					}
 				}
-
 			}
 			f.Funcs = append(f.Funcs, t)
 		}
