@@ -113,6 +113,12 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 		return f, err
 	}
 
+	st := c.String("struct")
+	if st != "" {
+		ps = append(ps, st)
+		createdps[st] = true
+	}
+
 	fuc := c.String("function")
 	for _, decl := range fast.Decls {
 		if fn, isFunc := decl.(*ast.FuncDecl); isFunc {
@@ -120,7 +126,7 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 				continue
 			}
 
-			if fuc != "" && fn.Name.Name != fuc {
+			if st != "" || (fuc != "" && fn.Name.Name != fuc) {
 				continue
 			}
 
@@ -171,10 +177,7 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 							// 递归寻找struct
 							if typeSpec.Name.String() != ps[0] {
 								continue
-							} else {
-								ps = ps[1:]
 							}
-
 							s := GenStruct{Name: typeSpec.Name.String(), Comment: genDecl.Doc.Text()}
 							if structType, isStruct := typeSpec.Type.(*ast.StructType); isStruct {
 								for _, field := range structType.Fields.List {
@@ -209,9 +212,8 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 						}
 					}
 				}
-
 			}
-
+			ps = ps[1:]
 		}
 	}
 	return
