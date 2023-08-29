@@ -132,6 +132,13 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 
 			t := GenFunc{Name: fn.Name.Name, Comment: fn.Doc.Text()}
 
+			if fn.Recv != nil {
+				for _, field := range fn.Recv.List {
+					ppp := GenField{Name: field.Names[0].Name, Typ: getTypeName(field.Type)}
+					t.In = append(t.In, ppp)
+				}
+			}
+
 			if fn.Type.Params != nil {
 				for _, param := range fn.Type.Params.List {
 					addPackageStruct(param.Type, fast)
