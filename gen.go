@@ -44,6 +44,7 @@ type GenField struct {
 	Typ     string
 	Comment string
 	TrueTyp int
+	STyp    string
 }
 
 func gen(c *cli.Context) error {
@@ -54,7 +55,7 @@ func gen(c *cli.Context) error {
 	}
 
 	// 生成PB
-	r, err := genPB(f)
+	r, err := genPB(c, f)
 	if err != nil {
 		return err
 	}
@@ -134,7 +135,12 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 
 			if fn.Recv != nil {
 				for _, field := range fn.Recv.List {
-					ppp := GenField{Name: field.Names[0].Name, Typ: getTypeName(field.Type)}
+					ppp := GenField{
+						Name:    field.Names[0].Name,
+						Typ:     getTypeName(field.Type),
+						TrueTyp: getTypeEnum(field.Type),
+						STyp:    getSTypeName(field.Type),
+					}
 					t.In = append(t.In, ppp)
 				}
 			}
@@ -147,7 +153,12 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 							continue
 						}
 
-						ppp := GenField{Name: n.Name, Typ: getTypeName(param.Type)}
+						ppp := GenField{
+							Name:    n.Name,
+							Typ:     getTypeName(param.Type),
+							TrueTyp: getTypeEnum(param.Type),
+							STyp:    getSTypeName(param.Type),
+						}
 						t.In = append(t.In, ppp)
 					}
 				}
@@ -162,11 +173,21 @@ func getAST(c *cli.Context) (f GenFile, err error) {
 					}
 					// 处理匿名返回值
 					if len(param.Names) == 0 {
-						ppp := GenField{Name: "res" + strconv.Itoa(index), Typ: ty}
+						ppp := GenField{
+							Name:    "res" + strconv.Itoa(index),
+							Typ:     ty,
+							TrueTyp: getTypeEnum(param.Type),
+							STyp:    getSTypeName(param.Type),
+						}
 						t.Out = append(t.Out, ppp)
 					} else {
 						for _, n := range param.Names {
-							ppp := GenField{Name: n.Name, Typ: ty}
+							ppp := GenField{
+								Name:    n.Name,
+								Typ:     ty,
+								TrueTyp: getTypeEnum(param.Type),
+								STyp:    getSTypeName(param.Type),
+							}
 							t.Out = append(t.Out, ppp)
 						}
 					}
@@ -249,6 +270,30 @@ func getTypeName(expr ast.Expr) string {
 			return "int64"
 		}
 		return n
+	default:
+		return "unknown"
+	}
+}
+
+// getSTypeName 获取struct的name
+func getSTypeName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.ArrayType:
+		elemType := getTypeName(t.Elt)
+		return "[]" + elemType
+	case *ast.MapType:
+		keyType := getTypeName(t.Key)
+		valueType := getTypeName(t.Value)
+		return "map[" + keyType + "]" + valueType
+	case *ast.StarExpr:
+		starType := getTypeName(t.X)
+		return "*" + starType
+	case *ast.SelectorExpr:
+		// 时间使用时间戳
+		selectorType := getTypeName(t.X)
+		return selectorType + "." + t.Sel.Name
 	default:
 		return "unknown"
 	}
@@ -376,7 +421,7 @@ func genS2PB(c *cli.Context, f GenFile) (data []byte, err error) {
 	return buf.Bytes(), nil
 }
 
-func genPB(f GenFile) (data []byte, err error) {
+func genPB(c *cli.Context, f GenFile) (data []byte, err error) {
 	buf := &bytes.Buffer{}
 	tpl := template.New("rule").Funcs(template.FuncMap{
 		"add": func(a, b int) int {
@@ -417,9 +462,33 @@ func genPB(f GenFile) (data []byte, err error) {
 			input = strings.ReplaceAll(input, "\n", "")
 			return input != ""
 		},
+		"tolower": func(s string) string {
+			return strings.ToLower(s)
+		},
+		"marconv": func(s string, ty string, t int) string {
+			if t == 1 {
+				return "" + s + ".Unix()"
+			} else if t == 2 {
+				return "s2pb" + ty + "(" + s + ")"
+			}
+			return s
+		},
+		"unmarconv": func(s string, ty string, t int) string {
+			if t == 1 {
+				return "time.Unix(resp.Data." + toCamelCase(s) + ", 0)"
+			} else if t == 2 {
+				return "pb2s" + ty + "(resp.Data." + toCamelCase(s) + ")"
+			}
+			return "resp.Data." + toCamelCase(s)
+		},
+		"toCamelCase": toCamelCase,
 	})
 
-	template.Must(tpl.Parse(tmplPB))
+	if c.Bool("rpc") {
+		template.Must(tpl.Parse(tmplRPC))
+	} else {
+		template.Must(tpl.Parse(tmplPB))
+	}
 
 	if err := tpl.Execute(buf, f); err != nil {
 		panic(err)
@@ -456,6 +525,35 @@ message {{ .Name }}Data {{ "{" }}{{ range $index, $element := .Out }}
 {{ range .Structs }}
 {{ if commentnotempty .Comment }}{{ comment .Comment }}{{ end }}message {{ .Name }} { {{ range $index, $element := .Field }}
 {{ if commentnotempty .Comment }}	{{ comment .Comment }}{{ end }}	{{ replace .Typ }} {{ rename .Name }} = {{$index | add 1}};{{ end }}
+}
+{{ end }}
+`
+
+const tmplRPC = `
+{{ range .Funcs }}
+func {{ .Name }}(ctx context.Context{{ range .In }}, {{ .Name }} {{ .STyp }}{{ end }}) ({{ range .Out }}{{ .Name }} {{ .t STyp }} ,{{ end }} err error) {
+	client := xhttp.NewClient(conf.GetDuration("RPC_TIMEOUT"))
+	micro := {{ tolower $.Sn }}.New{{ $.Sn }}ProtobufClient(conf.Get("RPC_DOMAIN"), client)
+
+	p := &group.{{ .Name }}Req{
+	{{ range .In }}	{{ toCamelCase .Name }}:{{ marconv .Name .Typ .TrueTyp }},
+	{{ end }}{{ "}" }}
+
+	resp, err := micro.{{ .Name }}(ctx, p)
+	if err != nil {
+		return
+	}
+
+	if resp.Code != 0 {
+		err = errors.CodeError(resp.Code, resp.Msg)
+		return
+	}
+
+	{{ range .Out }}
+	{{ .Name }} = {{ unmarconv .Name .Typ .TrueTyp }}
+	{{ end }}
+
+	return
 }
 {{ end }}
 `

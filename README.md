@@ -1,27 +1,40 @@
-# usage
-- file 目标Go文件 必需
-- out 目的输出proto文件 默认为stdout
-- function 目标Go文件中指定函数名 默认为整个file的函数
-- struct 目标Go文件中指定结构体名 默认为整个file依赖的结构体
-- vv 输出rpc层使用的struct<=>pb的转化函数到stdout，带上后`-out`无效
-- vvv 输出dao层使用的struct<=>pb的转化函数到stdout，带上后`-out`无效
+# Flags
 
-根据指定的Go文件，为其每一个导出函数生成pb方法，同时生成依赖的包内struct的pb message
-Notice:
+- `-file` 目标Go文件 必需
+- `-out` 目的输出proto文件 默认为stdout
+- `-function` 指定目标Go文件中的某个具体函数名 默认为整个file的函数
+- `-struct` 指定目标Go文件中的某个具体结构体名 默认为整个file的函数所依赖的结构体
+- `-rpc` 输出调用微服务函数逻辑到stdout，带上后`-out`无效
+- `-vv` 输出rpc层使用的struct<=>pb的转化函数到stdout，带上后`-out`无效
+- `-vvv` 输出dao层使用的struct<=>pb的转化函数到stdout，带上后`-out`无效
 
-- 包外的结构体无法扫描生成,如需使用可以指定`-struct`输出到stdout后复制 `func2pb -file xxx.go -struct ABC` 
-- proto不支持类型需要手动处理，比如`二维数组`or`Map的value为数组`
+# Usage
+
+- 根据指定的Go文件，为其每一个导出函数生成pb方法，同时生成依赖的包内struct的pb message
+- 根据指定的Go文件，生成其struct与pb互相转化的函数
+- 根据指定的Go文件，生成调用微服务逻辑
 
 ```bash
 # 安装
 go install github.com/giftDad/func2pb@latest
-# 输出pb文件
+
+# 生成pb文件
 func2pb -file test/test.go -out test/test.proto
-# 输出pb<=>struct转换函数
+
+# 生成pb<=>struct转换函数
 func2pb -file test/test.go -vv
+
+# 生成调用者的逻辑
+func2pb -file test/test.go -rpc
 ```
 
-# example
+# Notice
+
+- 包外的结构体无法扫描生成,如需使用可以指定`-struct`输出到stdout后复制 `func2pb -file xxx.go -struct ABC` 
+- proto不支持类型需要手动处理，比如`二维数组`or`Map的value为数组`
+
+
+# Example
 ```go
 package test
 

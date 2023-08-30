@@ -33,6 +33,10 @@ func main() {
 			Usage: "only suruct default : total function in file",
 		},
 		&cli.BoolFlag{
+			Name:  "rpc",
+			Usage: "gen rpc",
+		},
+		&cli.BoolFlag{
 			Name:  "vv",
 			Usage: "stdout struct2pb for rpc",
 		},
