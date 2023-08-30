@@ -348,7 +348,7 @@ func genS2PB(f GenFile) (data []byte, err error) {
 			if t == 1 {
 				return "s." + s + ".Unix()"
 			} else if t == 2 {
-				return "pb2s" + s + "(s." + s + ")"
+				return "s2pb" + s + "(s." + s + ")"
 			}
 			return "s." + s
 		},
@@ -356,7 +356,7 @@ func genS2PB(f GenFile) (data []byte, err error) {
 			if t == 1 {
 				return "time.Unix(s." + toCamelCase(s) + ", 0)"
 			} else if t == 2 {
-				return "s2pb" + toCamelCase(s) + "(s." + toCamelCase(s) + ")"
+				return "pb2s" + toCamelCase(s) + "(s." + toCamelCase(s) + ")"
 			}
 			return "s." + toCamelCase(s)
 		},
