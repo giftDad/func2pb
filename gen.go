@@ -60,8 +60,8 @@ func gen(c *cli.Context) error {
 	}
 
 	// 生成s2pb
-	if c.Bool("vv") {
-		s, err := genS2PB(f)
+	if c.Bool("vv") || c.Bool("vvv") {
+		s, err := genS2PB(c, f)
 		if err != nil {
 			return err
 		}
@@ -338,7 +338,7 @@ func toCamelCase(s string) string {
 	return string(bs)
 }
 
-func genS2PB(f GenFile) (data []byte, err error) {
+func genS2PB(c *cli.Context, f GenFile) (data []byte, err error) {
 	buf := &bytes.Buffer{}
 	tpl := template.New("rule").Funcs(template.FuncMap{
 		"tolower": func(s string) string {
@@ -363,7 +363,11 @@ func genS2PB(f GenFile) (data []byte, err error) {
 		"toCamelCase": toCamelCase,
 	})
 
-	template.Must(tpl.Parse(tmplS2PB))
+	if c.Bool("vv") {
+		template.Must(tpl.Parse(tmplS2PB))
+	} else if c.Bool("vvv") {
+		template.Must(tpl.Parse(tmplPB2S))
+	}
 
 	if err := tpl.Execute(buf, f); err != nil {
 		panic(err)
@@ -466,6 +470,22 @@ func s2pb{{ .Name }}(s {{ tolower $.Sn }}.{{ .Name }}) *{{ .Name }} {
 
 func pb2s{{ .Name }}(s *{{ .Name }}) {{ tolower $.Sn }}.{{ .Name }}{
 	return {{ tolower $.Sn }}. {{ .Name }}{ {{ range .Field }}
+		{{ .Name }} : {{ unmarconv .Name .TrueTyp }},{{ end }}
+	}
+}
+{{ end }}
+`
+
+const tmplPB2S = `
+{{ range .Structs }}
+func s2pb{{ .Name }}(s {{ .Name }}) *{{ tolower $.Sn }}.{{ .Name }} {
+	return &{{ tolower $.Sn }}.{{ .Name }}{ {{ range .Field }}
+		{{ toCamelCase .Name }} : {{ marconv .Name .TrueTyp }},{{ end }}
+	}
+}
+
+func pb2s{{ .Name }}(s *{{ tolower $.Sn }}.{{ .Name }}) {{ .Name }}{
+	return {{ .Name }}{ {{ range .Field }}
 		{{ .Name }} : {{ unmarconv .Name .TrueTyp }},{{ end }}
 	}
 }

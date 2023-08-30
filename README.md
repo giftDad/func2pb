@@ -3,7 +3,8 @@
 - out 目的输出proto文件 默认为stdout
 - function 目标Go文件中指定函数名 默认为整个file的函数
 - struct 目标Go文件中指定结构体名 默认为整个file依赖的结构体
-- vv 输出struct<=>pb的转化函数到stdout，带上后`-out`无效
+- vv 输出rpc层使用的struct<=>pb的转化函数到stdout，带上后`-out`无效
+- vvv 输出dao层使用的struct<=>pb的转化函数到stdout，带上后`-out`无效
 
 根据指定的Go文件，为其每一个导出函数生成pb方法，同时生成依赖的包内struct的pb message
 Notice:

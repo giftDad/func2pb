@@ -34,7 +34,11 @@ func main() {
 		},
 		&cli.BoolFlag{
 			Name:  "vv",
-			Usage: "stdout struct2pb",
+			Usage: "stdout struct2pb for rpc",
+		},
+		&cli.BoolFlag{
+			Name:  "vvv",
+			Usage: "stdout struct2pb for dao",
 		},
 	}
 
