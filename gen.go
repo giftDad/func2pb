@@ -389,6 +389,9 @@ func genS2PB(c *cli.Context, f GenFile) (data []byte, err error) {
 		"tolower": func(s string) string {
 			return strings.ToLower(s)
 		},
+		"toupper": func(s string) string {
+			return strings.ToUpper(s)
+		},
 		"marconv": func(s string, t int) string {
 			if t == 1 {
 				return "s." + s + ".Unix()"
@@ -465,6 +468,9 @@ func genPB(c *cli.Context, f GenFile) (data []byte, err error) {
 		"tolower": func(s string) string {
 			return strings.ToLower(s)
 		},
+		"toupper": func(s string) string {
+			return strings.ToUpper(s)
+		},
 		"marconv": func(s string, ty string, t int) string {
 			if t == 1 {
 				return "" + s + ".Unix()"
@@ -531,9 +537,9 @@ message {{ .Name }}Data {{ "{" }}{{ range $index, $element := .Out }}
 
 const tmplRPC = `
 {{ range .Funcs }}
-func {{ .Name }}(ctx context.Context{{ range .In }}, {{ .Name }} {{ .STyp }}{{ end }}) ({{ range .Out }}{{ .Name }} {{ .t STyp }} ,{{ end }} err error) {
+func {{ .Name }}(ctx context.Context{{ range .In }}, {{ .Name }} {{ .STyp }}{{ end }}) ({{ range .Out }}{{ .Name }} {{ .STyp }} ,{{ end }} err error) {
 	client := xhttp.NewClient(conf.GetDuration("RPC_TIMEOUT"))
-	micro := {{ tolower $.Sn }}.New{{ $.Sn }}ProtobufClient(conf.Get("RPC_DOMAIN"), client)
+	micro := {{ tolower $.Sn }}.New{{ $.Sn }}ProtobufClient(conf.Get("RPC_{{ toupper $.Sn }}_DOMAIN"), client)
 
 	p := &group.{{ .Name }}Req{
 	{{ range .In }}	{{ toCamelCase .Name }}:{{ marconv .Name .Typ .TrueTyp }},
@@ -548,11 +554,9 @@ func {{ .Name }}(ctx context.Context{{ range .In }}, {{ .Name }} {{ .STyp }}{{ e
 		err = errors.CodeError(resp.Code, resp.Msg)
 		return
 	}
-
 	{{ range .Out }}
 	{{ .Name }} = {{ unmarconv .Name .Typ .TrueTyp }}
 	{{ end }}
-
 	return
 }
 {{ end }}
