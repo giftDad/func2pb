@@ -539,9 +539,9 @@ const tmplRPC = `
 {{ range .Funcs }}
 func {{ .Name }}(ctx context.Context{{ range .In }}, {{ .Name }} {{ .STyp }}{{ end }}) ({{ range .Out }}{{ .Name }} {{ .STyp }} ,{{ end }} err error) {
 	client := xhttp.NewClient(conf.GetDuration("RPC_TIMEOUT"))
-	micro := {{ tolower $.Sn }}.New{{ $.Sn }}ProtobufClient(conf.Get("RPC_{{ toupper $.Sn }}_DOMAIN"), client)
+	micro := {{ tolower $.Sn }}.New{{ $.Sn }}ProtobufClient(conf.Get("KUNKKA_ENDPOINT"), client)
 
-	p := &group.{{ .Name }}Req{
+	p := &{{ tolower $.Sn }}.{{ .Name }}Req{
 	{{ range .In }}	{{ toCamelCase .Name }}:{{ marconv .Name .Typ .TrueTyp }},
 	{{ end }}{{ "}" }}
 
@@ -550,10 +550,6 @@ func {{ .Name }}(ctx context.Context{{ range .In }}, {{ .Name }} {{ .STyp }}{{ e
 		return
 	}
 
-	if resp.Code != 0 {
-		err = errors.CodeError(resp.Code, resp.Msg)
-		return
-	}
 	{{ range .Out }}
 	{{ .Name }} = {{ unmarconv .Name .Typ .TrueTyp }}
 	{{ end }}
